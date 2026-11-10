@@ -109,7 +109,7 @@ function SingleStep({
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
 }) {
-  const { summary, detail } = useStepContent(part);
+  const { summary, detail, frameless } = useStepContent(part);
   if (bareThought(part)) {
     return (
       <div className="flex items-center gap-1.5 text-chat-muted text-(length:--chat-activity-font-size)">
@@ -132,7 +132,7 @@ function SingleStep({
       summaryClassName="text-(length:--chat-activity-font-size)"
       panelClassName="pt-3"
     >
-      <div className="rounded-chat-md border border-chat-divider px-3 py-2">{detail}</div>
+      {frameless ? detail : <div className="rounded-chat-md border border-chat-divider px-3 py-2">{detail}</div>}
     </Disclosure>
   );
 }
@@ -156,7 +156,7 @@ function Step({ part }: { part: ActivityPart }) {
 }
 
 /** The label line and expanded body of one step. Tool calls go through their registered view. */
-function useStepContent(part: ActivityPart): { summary: ReactNode; detail: ReactNode } {
+function useStepContent(part: ActivityPart): { summary: ReactNode; detail: ReactNode; frameless?: boolean } {
   const labels = useLabels();
   const view = useToolView(part.type === "tool_call" ? part.name : "");
   if (part.type === "thinking") {
@@ -184,6 +184,7 @@ function useStepContent(part: ActivityPart): { summary: ReactNode; detail: React
       </span>
     ),
     detail: <Detail part={part} />,
+    frameless: view.frameless,
   };
 }
 

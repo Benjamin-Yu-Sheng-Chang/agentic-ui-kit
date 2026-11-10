@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { ChatTheme } from "../primitives/chat-theme";
 import { ActivityGroup } from "./activity-group";
+import { ToolViewsProvider } from "./tools";
 
 afterEach(cleanup);
 
@@ -46,4 +47,14 @@ it("shows a bare thought among other steps as a row without a disclosure", () =>
   expect(getByText("Just thinking").closest("button")).toBeNull();
   expect(getByText("Searched").closest("button")).toBeTruthy();
   expect(container.querySelectorAll("button").length).toBe(2);
+});
+
+it("draws a frameless tool's detail without the bordered box", () => {
+  const call: ActivityPart = { type: "tool_call", id: "t", name: "links", status: "done", inputJson: "" };
+  const views = (frameless: boolean) => ({ links: { frameless, Detail: () => <ul data-testid="links" /> } });
+  for (const frameless of [true, false]) {
+    const { getByTestId, unmount } = render(<ToolViewsProvider tools={views(frameless)}><ActivityGroup parts={[call]} defaultExpanded /></ToolViewsProvider>);
+    expect(getByTestId("links").parentElement?.className.includes("border")).toBe(!frameless);
+    unmount();
+  }
 });

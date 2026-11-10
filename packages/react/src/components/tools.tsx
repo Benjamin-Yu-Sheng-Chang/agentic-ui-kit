@@ -29,6 +29,8 @@ export interface ToolView {
   summary?: (count: number, labels: ChatLabels) => string;
   /** Body shown when the row is expanded. Defaults to the result, or the input as JSON. */
   Detail?: ComponentType<{ part: ToolCallPart }>;
+  /** Draw `Detail` on its own, without the bordered box, when the call is the only step of its group (e.g. a list of links). */
+  frameless?: boolean;
   /**
    * Renders the call on its own in the message instead of as a row in the activity group, e.g. the
    * answers to a question or a chart.

@@ -38,3 +38,18 @@ it("opens the list from a rail button and closes it after a pick", () => {
   expect(onSelect).toHaveBeenCalledWith("a");
   expect(screen.queryByText("Alpha")).toBeNull();
 });
+
+it("opens a row's menu on right-click", () => {
+  render(<ChatList sections={sections} rowMenu={(chat) => <div role="dialog">Menu for {chat.title}</div>} />);
+  expect(screen.queryByText("Menu for Alpha")).toBeNull();
+  const notPrevented = fireEvent.contextMenu(screen.getByRole("button", { name: "Alpha" }));
+  expect(notPrevented).toBe(false);
+  expect(screen.getByText("Menu for Alpha")).toBeTruthy();
+});
+
+it("gives project rows their own menu from the ... button", () => {
+  render(<ChatList sections={sections} projectMenu={(p) => <div role="dialog">Menu for {p.name}</div>} />);
+  expect(screen.queryByText("Menu for website")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More options for website" }));
+  expect(screen.getByText("Menu for website")).toBeTruthy();
+});

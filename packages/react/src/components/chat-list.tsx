@@ -52,8 +52,10 @@ export interface ChatListProps {
   sections: ChatListSection[];
   activeId?: string;
   onSelect?: (chatId: string) => void;
-  /** Opens from a row's "…" button, e.g. `<ChatTitleMenu>` for that chat. */
+  /** Opens from a row's "…" button or a right-click on the row, e.g. `<ChatTitleMenu>` for that chat. */
   rowMenu?: (chat: ChatSummary) => ReactNode;
+  /** The same for a project row, e.g. renaming or removing the project. */
+  projectMenu?: (project: ProjectSummary) => ReactNode;
   "aria-label"?: string;
   className?: string;
 }
@@ -70,14 +72,14 @@ const rowClass = clsx(
  * The chat picker: sections of chats and projects, collapsible, with an active row, running and unread
  * markers and a per-row menu. Usable on its own (in a host's own sidebar) or inside `Sidebar`.
  */
-export function ChatList({ sections, activeId, onSelect, rowMenu, className, ...props }: ChatListProps) {
+export function ChatList({ sections, activeId, onSelect, rowMenu, projectMenu, className, ...props }: ChatListProps) {
   const icons = useIcons();
   const labels = useLabels();
   const row = (chat: ChatSummary, nested = false) => (
     <ChatRow key={chat.id} chat={chat} active={chat.id === activeId} nested={nested} {...(onSelect && { onSelect })} {...(rowMenu && { menu: rowMenu(chat) })} />
   );
   const items = (list: ChatListItem[]) =>
-    list.map((item) => (isProject(item) ? <ProjectRow key={item.id} project={item} activeId={activeId} row={row} /> : row(item)));
+    list.map((item) => (isProject(item) ? <ProjectRow key={item.id} project={item} activeId={activeId} row={row} {...(projectMenu && { menu: projectMenu(item) })} /> : row(item)));
 
   return (
     <nav aria-label={props["aria-label"] ?? labels.chats} className={clsx("flex flex-col gap-3", className)}>
@@ -162,7 +164,6 @@ function ChatRow({
   onSelect?: (id: string) => void;
   menu?: ReactNode;
 }) {
-  const icons = useIcons();
   const [menuOpen, setMenuOpen] = useState(false);
   const { dismiss } = useSidebar();
   const labels = useLabels();
@@ -189,45 +190,70 @@ function ChatRow({
   );
   const common = { className, "aria-current": active ? ("page" as const) : undefined, onPress: () => (onSelect?.(chat.id), dismiss()) };
   return (
-    <li className="group/item relative">
+    <li
+      className="group/item relative"
+      onContextMenu={menu ? (e) => (e.preventDefault(), setMenuOpen(true)) : undefined}
+    >
       {chat.href ? <Link {...common} href={chat.href}>{content}</Link> : <AriaButton {...common}>{content}</AriaButton>}
-      {menu && (
-        <MenuTrigger isOpen={menuOpen} onOpenChange={setMenuOpen}>
-          <IconButton
-            label={labels.moreOptionsFor(chat.title)}
-            size="sm"
-            tooltip={false}
-            className={clsx(
-              "absolute top-1/2 right-1 size-6 -translate-y-1/2 [@media(pointer:coarse)]:size-8",
-              menuOpen || active
-                ? "opacity-100"
-                : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 [@media(hover:none)]:opacity-100",
-            )}
-          >
-            {icons.more}
-          </IconButton>
-          <Popover placement="bottom start">{menu}</Popover>
-        </MenuTrigger>
-      )}
+      {menu && <RowMenu label={labels.moreOptionsFor(chat.title)} menu={menu} isOpen={menuOpen} onOpenChange={setMenuOpen} shown={active} />}
     </li>
   );
 }
 
-function ProjectRow({ project, activeId, row }: { project: ProjectSummary; activeId: string | undefined; row: (chat: ChatSummary, nested?: boolean) => ReactNode }) {
+/** A row's "..." button (shown on hover, focus, or when `shown`) and the menu it opens. */
+function RowMenu({ label, menu, isOpen, onOpenChange, shown }: { label: string; menu: ReactNode; isOpen: boolean; onOpenChange: (open: boolean) => void; shown: boolean }) {
+  const icons = useIcons();
+  return (
+    <MenuTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
+      <IconButton
+        label={label}
+        size="sm"
+        tooltip={false}
+        className={clsx(
+          "absolute top-1/2 right-1 size-6 -translate-y-1/2 [@media(pointer:coarse)]:size-8",
+          isOpen || shown
+            ? "opacity-100"
+            : "opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 [@media(hover:none)]:opacity-100",
+        )}
+      >
+        {icons.more}
+      </IconButton>
+      <Popover placement="bottom start">{menu}</Popover>
+    </MenuTrigger>
+  );
+}
+
+function ProjectRow({
+  project,
+  activeId,
+  row,
+  menu,
+}: {
+  project: ProjectSummary;
+  activeId: string | undefined;
+  row: (chat: ChatSummary, nested?: boolean) => ReactNode;
+  menu?: ReactNode;
+}) {
   const icons = useIcons();
   const labels = useLabels();
+  const [menuOpen, setMenuOpen] = useState(false);
   const holdsActive = project.chats.some((c) => c.id === activeId);
+  const triggerClass = clsx(rowClass, menu && (menuOpen ? "pr-8" : "group-hover/item:pr-8 group-focus-within/item:pr-8"), menu && "[@media(hover:none)]:pr-10");
   return (
     <li>
       <Disclosure defaultExpanded={project.defaultExpanded ?? holdsActive}>
         {({ isExpanded }) => (
           <>
-            <Heading className="m-0 font-normal">
-              <AriaButton slot="trigger" className={rowClass}>
+            <Heading
+              className="group/item relative m-0 font-normal"
+              onContextMenu={menu ? (e) => (e.preventDefault(), setMenuOpen(true)) : undefined}
+            >
+              <AriaButton slot="trigger" className={triggerClass}>
                 <IconSlot className="text-chat-muted [&_svg]:size-4">{isExpanded ? icons.folderOpen : icons.folder}</IconSlot>
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 {!isExpanded && project.chats.some((c) => c.unread || c.running) && <Badge>{labels.new}</Badge>}
               </AriaButton>
+              {menu && <RowMenu label={labels.moreOptionsFor(project.name)} menu={menu} isOpen={menuOpen} onOpenChange={setMenuOpen} shown={false} />}
             </Heading>
             <DisclosurePanel>
               <ul className="flex flex-col gap-px">{project.chats.map((c) => row(c, true))}</ul>
