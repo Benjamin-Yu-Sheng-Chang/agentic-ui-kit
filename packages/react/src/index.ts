@@ -92,7 +92,7 @@ export { DictationButton, DictationControls, VoiceMeter, encodeWav, useDictation
 export type { Dictation, DictationButtonProps, DictationState, UseDictationOptions, VoiceMeterProps } from "./components/dictation";
 export { EffortSlider, EffortButton } from "./components/effort-slider";
 export type { EffortSliderProps, EffortButtonProps } from "./components/effort-slider";
-export type { ComposerProps, AttachButtonProps } from "./components/composer";
+export type { ComposerProps, AttachButtonProps, ComposerCompletion, ComposerTrigger } from "./components/composer";
 export { ModelPicker } from "./components/model-picker";
 export type { ModelOption, ModelPickerProps } from "./components/model-picker";
 export { useAttachments, AttachmentCard, AttachmentRow, PastedTextDialog } from "./components/attachments";

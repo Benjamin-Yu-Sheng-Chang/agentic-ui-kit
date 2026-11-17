@@ -1,11 +1,67 @@
 import { clsx } from "clsx";
 import { useIcons } from "../primitives/icons";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type React from "react";
 import { IconButton } from "../primitives/button";
 import { useLabels } from "../primitives/labels";
 import { MenuTrigger, Popover } from "../primitives/menu";
 import { DictationControls, type DictationState } from "./dictation";
+
+export interface ComposerCompletion {
+  id: string;
+  label: string;
+  description?: string;
+  detail?: string;
+  /** Text inserted in place of `<trigger><query>`; defaults to `${trigger}${label} `. */
+  insertText?: string;
+}
+
+export interface ComposerTrigger {
+  /** Single trigger character, e.g. `"@"` or `"/"`. */
+  char: string;
+  items: readonly ComposerCompletion[];
+}
+
+interface ActiveMatch {
+  trigger: ComposerTrigger;
+  start: number;
+  end: number;
+  query: string;
+  items: ComposerCompletion[];
+}
+
+/** Find an active `<trigger><query>` token ending at `caret`, preceded by start-of-input or whitespace. */
+export function findComposerTrigger(
+  text: string,
+  caret: number,
+  triggers: readonly ComposerTrigger[] | undefined,
+): ActiveMatch | null {
+  if (!triggers?.length || caret <= 0 || caret > text.length) return null;
+  let pos = caret - 1;
+  while (pos >= 0 && !/\s/.test(text[pos]!)) {
+    pos -= 1;
+  }
+  const tokenStart = pos + 1;
+  const token = text.slice(tokenStart, caret);
+  if (!token) return null;
+  const ch = token[0]!;
+  const trigger = triggers.find((t) => t.char === ch);
+  if (!trigger || !trigger.items.length) return null;
+  const query = token.slice(1).toLowerCase();
+  const prefix: ComposerCompletion[] = [];
+  const rest: ComposerCompletion[] = [];
+  for (const item of trigger.items) {
+    const label = item.label.toLowerCase();
+    const desc = item.description?.toLowerCase() ?? "";
+    if (!query || label.startsWith(query)) {
+      prefix.push(item);
+    } else if (label.includes(query) || desc.includes(query)) {
+      rest.push(item);
+    }
+  }
+  const items = [...prefix, ...rest];
+  return items.length ? { trigger, start: tokenStart, end: caret, query, items } : null;
+}
 
 export interface ComposerProps {
   onSubmit: (text: string) => void;
@@ -38,6 +94,8 @@ export interface ComposerProps {
   /** Holds sending back, e.g. while a file uploads. */
   submitDisabled?: boolean;
   isDisabled?: boolean;
+  /** Trigger-character completion menus (`@`, `/`, ...), filtered as the user types. */
+  triggers?: readonly ComposerTrigger[];
   /**
    * Set while the user dictates (from `useDictation().state`): the words fill the box as they are heard,
    * and a level meter, cancel and accept replace `trailing` and send.
@@ -68,12 +126,14 @@ export function Composer({
   allowEmpty = false,
   submitDisabled = false,
   isDisabled = false,
+  triggers,
   dictation,
   autoFocus,
   className,
 }: ComposerProps) {
   const icons = useIcons();
   const labels = useLabels();
+  const listboxId = useId();
   const [own, setOwn] = useState("");
   const text = value ?? own;
   const setText = (next: string) => {
@@ -81,6 +141,34 @@ export function Composer({
     onChange?.(next);
   };
   const area = useRef<HTMLTextAreaElement>(null);
+  const [caret, setCaret] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [dismissedAt, setDismissedAt] = useState<string | null>(null);
+
+  const rawMatch = useMemo(
+    () => (dictation || isDisabled ? null : findComposerTrigger(text, caret, triggers)),
+    [text, caret, triggers, dictation, isDisabled],
+  );
+  const tokenKey = rawMatch ? `${rawMatch.start}:${rawMatch.trigger.char}:${rawMatch.query}` : null;
+  const match = rawMatch && dismissedAt !== tokenKey ? rawMatch : null;
+  const clampedIndex = match ? Math.min(activeIndex, match.items.length - 1) : 0;
+
+  const acceptCompletion = (item: ComposerCompletion) => {
+    if (!match) return;
+    const replacement = item.insertText ?? `${match.trigger.char}${item.label} `;
+    const next = `${text.slice(0, match.start)}${replacement}${text.slice(match.end)}`;
+    const nextCaret = match.start + replacement.length;
+    setText(next);
+    setCaret(nextCaret);
+    setActiveIndex(0);
+    setDismissedAt(null);
+    requestAnimationFrame(() => {
+      if (area.current) {
+        area.current.focus();
+        area.current.setSelectionRange(nextCaret, nextCaret);
+      }
+    });
+  };
 
   // Grow with the text up to the CSS max height, then scroll. Re-measured when the variant's padding or
   // the pane's width changes; it only scrolls once the text is taller than the max height.
@@ -124,8 +212,32 @@ export function Composer({
     if (!canSend) return;
     onSubmit(text);
     setText("");
+    setCaret(0);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (match && !e.nativeEvent.isComposing) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((clampedIndex + 1) % match.items.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((clampedIndex - 1 + match.items.length) % match.items.length);
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        const chosen = match.items[clampedIndex];
+        if (chosen) acceptCompletion(chosen);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissedAt(tokenKey);
+        return;
+      }
+    }
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || coarsePointer()) return;
     e.preventDefault();
     submit();
@@ -177,7 +289,7 @@ export function Composer({
   return (
     <div
       className={clsx(
-        "flex flex-col rounded-[var(--chat-composer-radius,1.25rem)] border border-chat-border bg-chat-surface font-chat-sans shadow-chat-popover",
+        "relative flex flex-col rounded-[var(--chat-composer-radius,1.25rem)] border border-chat-border bg-chat-surface font-chat-sans shadow-chat-popover",
         "focus-within:border-chat-border-strong",
         dragging && "border-chat-accent! border-dashed",
         compact ? "gap-1 p-2" : "gap-2 p-3",
@@ -192,6 +304,43 @@ export function Composer({
         }
       }}
     >
+      {match && (
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Completions"
+          className="absolute bottom-full left-0 z-40 mb-1.5 max-h-60 w-[min(24rem,100%)] overflow-y-auto rounded-chat-md border border-chat-popover-border bg-chat-popover p-1 text-chat-fg shadow-chat-popover"
+        >
+          {match.items.map((item, idx) => {
+            const selected = idx === clampedIndex;
+            return (
+              <div
+                key={item.id}
+                id={`${listboxId}-${idx}`}
+                role="option"
+                aria-selected={selected}
+                onMouseEnter={() => setActiveIndex(idx)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptCompletion(item);
+                }}
+                className={clsx(
+                  "flex cursor-pointer flex-col gap-0.5 rounded-chat-sm px-2.5 py-1.5 text-(length:--chat-ui-font-size)",
+                  selected ? "bg-chat-hover text-chat-fg" : "text-chat-fg",
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium">{`${match.trigger.char}${item.label}`}</span>
+                  {item.detail && <span className="truncate text-(length:--chat-ui-font-size-sm) text-chat-subtle">{item.detail}</span>}
+                </div>
+                {item.description && (
+                  <span className="truncate text-(length:--chat-ui-font-size-sm) text-chat-muted">{item.description}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {above}
       <div className={clsx("flex gap-2", compact ? "items-end" : "flex-col")}>
         {compact && leading}
@@ -200,11 +349,19 @@ export function Composer({
           rows={1}
           value={dictation ? joined(dictation.transcript) : text}
           readOnly={!!dictation}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setActiveIndex(0);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={dictation ? (finishing ? labels.transcribing : labels.listening) : (placeholder ?? labels.replyPlaceholder)}
           aria-label={labels.message}
+          aria-autocomplete={triggers?.length ? "list" : undefined}
+          aria-controls={match ? listboxId : undefined}
+          aria-activedescendant={match ? `${listboxId}-${clampedIndex}` : undefined}
           disabled={isDisabled}
           autoFocus={autoFocus}
           className={clsx(
@@ -232,7 +389,7 @@ export function Composer({
 }
 
 export interface AttachButtonProps {
-  /** The menu, e.g. `<Menu aria-label="Add">…</Menu>`. */
+  /** The menu, e.g. `<Menu aria-label="Add">...</Menu>`. */
   children: ReactNode;
   label?: string;
   /** Replaces the `+` icon. */
