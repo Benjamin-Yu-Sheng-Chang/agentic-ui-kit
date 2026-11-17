@@ -1,8 +1,10 @@
 import type { ActivityPart } from "@agentic-ui-kit/core";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { ChatTheme } from "../primitives/chat-theme";
+import { defaultLabels } from "../primitives/labels";
 import { ActivityGroup } from "./activity-group";
+import { AssistantMessage } from "./messages";
 import { ToolViewsProvider } from "./tools";
 
 afterEach(cleanup);
@@ -25,10 +27,13 @@ it("shows no icon by default", () => {
 
 const thought = (extra: object): ActivityPart[] => [{ type: "thinking", id: "t", text: "", status: "done", visibility: "hidden", ...extra } as ActivityPart];
 
-it("shows a finished thought with a title but no body as a plain line, not a disclosure", () => {
-  const { container, getByText } = render(<ActivityGroup parts={thought({ title: "Planning the search" })} />);
-  expect(getByText("Planning the search")).toBeTruthy();
-  expect(container.querySelector("button, [aria-expanded]")).toBeNull();
+it("opens a finished thought with no body to say the reasoning is not shown", () => {
+  const { getByText } = render(<ActivityGroup parts={thought({ title: "Planning the search" })} />);
+  const toggle = getByText("Planning the search").closest("button")!;
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(getByText(defaultLabels.reasoningHidden)).toBeTruthy();
 });
 
 it("drops a finished thought with no body and no title", () => {
@@ -41,12 +46,11 @@ it("keeps a still-streaming hidden thought expandable", () => {
   expect(container.querySelector("button")).toBeTruthy();
 });
 
-it("shows a bare thought among other steps as a row without a disclosure", () => {
+it("makes a bare thought among other steps an expandable row", () => {
   const parts = [...thought({ title: "Just thinking" }), { type: "tool_call", id: "c", name: "search", status: "done", inputJson: "{}", title: "Searched" } as ActivityPart];
-  const { container, getByText } = render(<ActivityGroup parts={parts} defaultExpanded />);
-  expect(getByText("Just thinking").closest("button")).toBeNull();
+  const { getByText } = render(<ActivityGroup parts={parts} defaultExpanded />);
+  expect(getByText("Just thinking").closest("button")).toBeTruthy();
   expect(getByText("Searched").closest("button")).toBeTruthy();
-  expect(container.querySelectorAll("button").length).toBe(2);
 });
 
 it("draws a frameless tool's detail without the bordered box", () => {
@@ -57,4 +61,13 @@ it("draws a frameless tool's detail without the bordered box", () => {
     expect(getByTestId("links").parentElement?.className.includes("border")).toBe(!frameless);
     unmount();
   }
+});
+
+it("shows a streaming reply with no output yet as an expandable thinking row", () => {
+  const message = { id: "a", parentId: null, role: "assistant", status: "streaming", createdAt: "2026-11-05T10:00:00Z", parts: [] } as const;
+  const { getByText, queryByText, rerender } = render(<AssistantMessage message={{ ...message, parts: [] }} />);
+  fireEvent.click(getByText(defaultLabels.thinking).closest("button")!);
+  expect(getByText(defaultLabels.reasoningHidden)).toBeTruthy();
+  rerender(<AssistantMessage message={{ ...message, parts: [{ type: "text", id: "t", text: "Hi", status: "streaming" }] }} />);
+  expect(queryByText(defaultLabels.thinking)).toBeNull();
 });

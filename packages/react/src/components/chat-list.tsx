@@ -21,6 +21,8 @@ export interface ChatSummary {
   muted?: boolean;
   /** Link target. Rows render as links when set (middle-click, open in new tab), else as buttons. */
   href?: string;
+  /** A small mark before the title, e.g. which agent the chat is with. */
+  icon?: ReactNode;
 }
 
 export interface ProjectSummary {
@@ -175,6 +177,7 @@ function ChatRow({
   ) : null;
   const content = (
     <>
+      {chat.icon != null && <IconSlot className="shrink-0 text-chat-muted [&_svg]:size-3.5">{chat.icon}</IconSlot>}
       <span className={clsx("min-w-0 flex-1 truncate", chat.unread && !active && !chat.muted && "font-medium", chat.muted && "text-chat-muted")}>{chat.title}</span>
       {chat.detail != null && <span className="shrink-0 text-(length:--chat-ui-font-size-sm) leading-4 text-chat-subtle tabular-nums">{chat.detail}</span>}
       {marker}

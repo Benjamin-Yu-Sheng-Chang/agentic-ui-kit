@@ -1,4 +1,4 @@
-import { toBlocks, type Message, type Part, type ToolCallPart } from "@agentic-ui-kit/core";
+import { toBlocks, type ActivityPart, type Message, type Part, type ToolCallPart } from "@agentic-ui-kit/core";
 import { CopyButton } from "../primitives/copy-button";
 import { useChatExtensions } from "./extensions";
 import { clsx } from "clsx";
@@ -156,6 +156,9 @@ export interface AssistantMessageProps {
   className?: string;
 }
 
+/** Stands in for a reply with no output yet, so a model that shares no reasoning still shows it is working. */
+const WAITING: ActivityPart[] = [{ type: "thinking", id: "waiting", text: "", status: "streaming", visibility: "hidden" }];
+
 /**
  * The assistant's turn: activity groups (each with its own token count), markdown, and other parts in
  * order. When done, copy / read aloud / feedback / retry and the time sit under it.
@@ -170,6 +173,7 @@ export function AssistantMessage({ message, onRetry, onFeedback, onReadAloud, re
   const { first, chains } = toolChains?.group(message) ?? { first: new Map<string, string>(), chains: new Map<string, ToolCallPart[]>() };
   return (
     <div className={clsx("group/message flex flex-col gap-4", className)}>
+      {streaming && message.parts.length === 0 && <ActivityGroup parts={WAITING} />}
       {blocks.map((block) => {
         if (block.kind === "activity") {
           const cards = block.parts.filter((p) => p.type === "tool_call" && views[p.name]?.Card);
