@@ -43,14 +43,16 @@ export interface MenuSearchProps {
   /** Controlled search text, e.g. to offer "Create <text>". */
   value?: string;
   onChange?: (value: string) => void;
+  /** Whether an item (its `textValue`) matches the search text. Default: case- and accent-insensitive substring. */
+  filter?: (textValue: string, search: string) => boolean;
 }
 
 /** A search box above a menu that filters its items, like "Search or create a project". */
-export function MenuSearch({ placeholder, children, value, onChange }: MenuSearchProps) {
+export function MenuSearch({ placeholder, children, value, onChange, filter }: MenuSearchProps) {
   const { contains } = useFilter({ sensitivity: "base" });
   return (
     <Autocomplete
-      filter={contains}
+      filter={filter ?? contains}
       {...(value !== undefined && { inputValue: value })}
       {...(onChange && { onInputChange: onChange })}
     >
