@@ -23,6 +23,8 @@ export interface ChatSummary {
   href?: string;
   /** A small mark before the title, e.g. which agent the chat is with. */
   icon?: ReactNode;
+  /** Indent steps past the row's usual start, e.g. 1 for rows under a muted subheading row. */
+  depth?: number;
 }
 
 export interface ProjectSummary {
@@ -191,7 +193,8 @@ function ChatRow({
     menu && (menuOpen || active ? "pr-8" : "group-hover/item:pr-8 group-focus-within/item:pr-8"),
     menu && "[@media(hover:none)]:pr-10",
   );
-  const common = { className, "aria-current": active ? ("page" as const) : undefined, onPress: () => (onSelect?.(chat.id), dismiss()) };
+  const style = chat.depth ? { paddingInlineStart: `${(nested ? 2 : 0.5) + chat.depth}rem` } : undefined;
+  const common = { className, style, "aria-current": active ? ("page" as const) : undefined, onPress: () => (onSelect?.(chat.id), dismiss()) };
   return (
     <li
       className="group/item relative"
