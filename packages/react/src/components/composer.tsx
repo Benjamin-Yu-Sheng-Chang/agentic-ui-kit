@@ -105,6 +105,9 @@ export interface ComposerProps {
   className?: string;
 }
 
+/** How long typing must pause before the completion menu matches the text again. */
+const SETTLE_MS = 300;
+
 /** Touch keyboards have no easy Shift+Enter, so there Enter adds a line and the button sends. */
 const coarsePointer = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
@@ -145,21 +148,35 @@ export function Composer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissedAt, setDismissedAt] = useState<string | null>(null);
 
+  const [settled, setSettled] = useState({ text: "", caret: 0 });
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const settle = (next: { text: string; caret: number }, now = false) => {
+    clearTimeout(settleTimer.current);
+    if (now) setSettled(next);
+    else settleTimer.current = setTimeout(() => setSettled(next), SETTLE_MS);
+  };
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
+
+  // Matched on the text as it was at the last pause: while typing, the menu keeps its last list.
   const rawMatch = useMemo(
-    () => (dictation || isDisabled ? null : findComposerTrigger(text, caret, triggers)),
-    [text, caret, triggers, dictation, isDisabled],
+    () => (dictation || isDisabled ? null : findComposerTrigger(settled.text, settled.caret, triggers)),
+    [settled, triggers, dictation, isDisabled],
   );
   const tokenKey = rawMatch ? `${rawMatch.start}:${rawMatch.trigger.char}:${rawMatch.query}` : null;
   const match = rawMatch && dismissedAt !== tokenKey ? rawMatch : null;
   const clampedIndex = match ? Math.min(activeIndex, match.items.length - 1) : 0;
 
-  const acceptCompletion = (item: ComposerCompletion) => {
-    if (!match) return;
-    const replacement = item.insertText ?? `${match.trigger.char}${item.label} `;
-    const next = `${text.slice(0, match.start)}${replacement}${text.slice(match.end)}`;
-    const nextCaret = match.start + replacement.length;
+  /** False when the text typed since the last pause no longer ends in a trigger token. */
+  const acceptCompletion = (item: ComposerCompletion): boolean => {
+    // The shown list may be from before the last keystrokes; the token to replace is the current one.
+    const token = findComposerTrigger(text, caret, triggers);
+    if (!match || !token || token.trigger.char !== match.trigger.char) return false;
+    const replacement = item.insertText ?? `${token.trigger.char}${item.label} `;
+    const next = `${text.slice(0, token.start)}${replacement}${text.slice(token.end)}`;
+    const nextCaret = token.start + replacement.length;
     setText(next);
     setCaret(nextCaret);
+    settle({ text: next, caret: nextCaret }, true);
     setActiveIndex(0);
     setDismissedAt(null);
     requestAnimationFrame(() => {
@@ -168,6 +185,7 @@ export function Composer({
         area.current.setSelectionRange(nextCaret, nextCaret);
       }
     });
+    return true;
   };
 
   // Grow with the text up to the CSS max height, then scroll. Re-measured when the variant's padding or
@@ -213,6 +231,7 @@ export function Composer({
     onSubmit(text);
     setText("");
     setCaret(0);
+    settle({ text: "", caret: 0 }, true);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (match && !e.nativeEvent.isComposing) {
@@ -227,10 +246,11 @@ export function Composer({
         return;
       }
       if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
-        e.preventDefault();
         const chosen = match.items[clampedIndex];
-        if (chosen) acceptCompletion(chosen);
-        return;
+        if (chosen && acceptCompletion(chosen)) {
+          e.preventDefault();
+          return;
+        }
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -350,11 +370,17 @@ export function Composer({
           value={dictation ? joined(dictation.transcript) : text}
           readOnly={!!dictation}
           onChange={(e) => {
+            const nextCaret = e.target.selectionStart ?? e.target.value.length;
             setText(e.target.value);
-            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setCaret(nextCaret);
             setActiveIndex(0);
+            settle({ text: e.target.value, caret: nextCaret });
           }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onSelect={(e) => {
+            const nextCaret = e.currentTarget.selectionStart ?? 0;
+            setCaret(nextCaret);
+            settle({ text: e.currentTarget.value, caret: nextCaret });
+          }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={dictation ? (finishing ? labels.transcribing : labels.listening) : (placeholder ?? labels.replyPlaceholder)}
