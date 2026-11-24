@@ -1,4 +1,4 @@
-import { toBlocks, type ActivityPart, type Message, type Part, type ToolCallPart } from "@agentic-ui-kit/core";
+import { splitCommand, toBlocks, type ActivityPart, type Message, type Part, type ToolCallPart } from "@agentic-ui-kit/core";
 import { CopyButton } from "../primitives/copy-button";
 import { useChatExtensions } from "./extensions";
 import { clsx } from "clsx";
@@ -97,6 +97,18 @@ export function UserMessage({ message, onRetry, onEdit, actions, copy = true, ti
   );
 }
 
+/** A prompt that starts with a slash command shows the command in the command color. */
+function CommandText({ text }: { text: string }) {
+  const split = splitCommand(text);
+  if (!split) return <>{text}</>;
+  return (
+    <>
+      <span className="font-semibold text-chat-command">{split.command}</span>
+      {split.rest}
+    </>
+  );
+}
+
 /** Taller than this (px), a user message folds to this height with "Show more", like a long paste. */
 const FOLD_HEIGHT = 240;
 
@@ -122,7 +134,7 @@ function UserBubble({ text }: { text: string }) {
         style={folded ? { maxHeight: FOLD_HEIGHT } : undefined}
         className={clsx("whitespace-pre-wrap", folded && "overflow-hidden mask-b-from-60% mask-b-to-100%")}
       >
-        {text}
+        <CommandText text={text} />
       </div>
       {long && (
         <button

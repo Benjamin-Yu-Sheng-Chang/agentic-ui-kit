@@ -39,6 +39,7 @@
   --color-chat-warning-bg: var(--chat-warning-bg);
   --color-chat-danger: var(--chat-danger);
   --color-chat-focus: var(--chat-focus);
+  --color-chat-command: var(--chat-command, var(--chat-focus));
 
   --font-chat-sans: var(--chat-font-sans);
   --font-chat-serif: var(--chat-font-serif);
