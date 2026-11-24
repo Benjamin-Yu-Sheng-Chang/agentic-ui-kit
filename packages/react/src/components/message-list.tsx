@@ -1,7 +1,7 @@
 import type { Message, Part } from "@agentic-ui-kit/core";
 import { clsx } from "clsx";
 import { useIcons } from "../primitives/icons";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { IconButton } from "../primitives/button";
 import { useLabels } from "../primitives/labels";
 import { useChatExtensions } from "./extensions";
@@ -89,6 +89,8 @@ export function MessageList({ messages, onRetry, onEdit, onFeedback, onReadAloud
     // eslint-disable-next-line react-hooks/exhaustive-deps -- nearBottom only reads refs
   }, [lastUser, toBottom]);
 
+  const rows = <MemoRows messages={messages} onRetry={onRetry} onEdit={onEdit} onFeedback={onFeedback} onReadAloud={onReadAloud} actions={actions} renderPart={renderPart} />;
+
   return (
     <div className={clsx("relative min-h-0 flex-1", className)}>
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto [scrollbar-gutter:stable] [scrollbar-width:thin]">
@@ -100,21 +102,7 @@ export function MessageList({ messages, onRetry, onEdit, onFeedback, onReadAloud
           >
             {header}
             <Scope messages={messages}>
-            {messages.map((m) =>
-              m.role === "user" ? (
-                <UserMessage key={m.id} message={m} {...(onEdit && { onEdit: () => onEdit(m.id) })} {...(actions?.extra && { actions: actions.extra(m) })} {...(actions?.copy === false && { copy: false })} {...(actions?.time === false && { time: false })} />
-              ) : (
-                <AssistantMessage
-                  key={m.id}
-                  message={m}
-                  {...(onRetry && { onRetry: () => onRetry(m.id) })}
-                  {...(onFeedback && { onFeedback: (f: Feedback) => onFeedback(m.id, f) })}
-                  {...(onReadAloud && { onReadAloud: () => onReadAloud(m.id) })}
-                  {...(actions?.extra && { actions: actions.extra(m) })} {...(actions?.copy === false && { copy: false })} {...(actions?.time === false && { time: false })}
-                  {...(renderPart && { renderPart })}
-                />
-              ),
-            )}
+            {rows}
             </Scope>
           </div>
           {footer && <div className="sticky bottom-0">{footer}</div>}
@@ -136,3 +124,28 @@ export function MessageList({ messages, onRetry, onEdit, onFeedback, onReadAloud
     </div>
   );
 }
+
+function Rows({ messages, onRetry, onEdit, onFeedback, onReadAloud, actions, renderPart }: Pick<MessageListProps, "messages" | "onRetry" | "onEdit" | "onFeedback" | "onReadAloud" | "actions" | "renderPart">) {
+  return (
+    <>
+            {messages.map((m) =>
+              m.role === "user" ? (
+                <UserMessage key={m.id} message={m} {...(onEdit && { onEdit: () => onEdit(m.id) })} {...(actions?.extra && { actions: actions.extra(m) })} {...(actions?.copy === false && { copy: false })} {...(actions?.time === false && { time: false })} />
+              ) : (
+                <AssistantMessage
+                  key={m.id}
+                  message={m}
+                  {...(onRetry && { onRetry: () => onRetry(m.id) })}
+                  {...(onFeedback && { onFeedback: (f: Feedback) => onFeedback(m.id, f) })}
+                  {...(onReadAloud && { onReadAloud: () => onReadAloud(m.id) })}
+                  {...(actions?.extra && { actions: actions.extra(m) })} {...(actions?.copy === false && { copy: false })} {...(actions?.time === false && { time: false })}
+                  {...(renderPart && { renderPart })}
+                />
+              ),
+            )}
+    </>
+  );
+}
+
+// The footer (often the composer) re-renders on every keystroke; the transcript only when its own props change.
+const MemoRows = memo(Rows);

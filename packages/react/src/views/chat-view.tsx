@@ -110,7 +110,10 @@ export function ChatView({
     ...(contentWidth && { "--chat-content-width": contentWidth }),
     ...(contentPadding && { "--chat-content-padding": contentPadding }),
   } as CSSProperties;
-  const interaction = useMemo(() => ({ send: onSend }), [onSend]);
+  // Hosts pass a new onSend each render; a stable value keeps the memoized transcript from re-rendering.
+  const latestSend = useRef(onSend);
+  latestSend.current = onSend;
+  const interaction = useMemo(() => ({ send: (text: string) => latestSend.current(text) }), []);
   const empty = messages.length === 0;
   const [body, short] = useShortPane();
   const labels = useLabels();
