@@ -1,8 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Composer, findComposerTrigger, type ComposerTrigger } from "./composer";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const paste = (el: Element, data: { text?: string; files?: File[] }) =>
   fireEvent.paste(el, { clipboardData: { files: data.files ?? [], getData: () => data.text ?? "" } });
@@ -56,22 +59,44 @@ it("matches trigger tokens only at start or after whitespace, never inside email
   expect(m?.items.map((i) => i.id)).toEqual(["goal"]);
 });
 
+const typeAndPause = (box: Element, value: string) => {
+  fireEvent.change(box, { target: { value, selectionStart: value.length } });
+  // jsdom reports the caret move (onSelect) a tick after the change, and the pause counts from there.
+  act(() => vi.advanceTimersByTime(1));
+  act(() => vi.advanceTimersByTime(300));
+};
+
 it("filters completions, navigates with arrows, inserts on Enter without submitting, and dismisses on Escape", () => {
+  vi.useFakeTimers();
   const onSubmit = vi.fn();
   const { getByRole, queryByRole } = render(<Composer onSubmit={onSubmit} triggers={TRIGGERS} />);
   const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
 
-  fireEvent.change(box, { target: { value: "@", selectionStart: 1 } });
+  typeAndPause(box, "@");
   expect(getByRole("listbox")).toBeTruthy();
 
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
+  act(() => vi.advanceTimersToNextFrame());
   expect(onSubmit).not.toHaveBeenCalled();
   expect(box.value).toBe("/goal ");
   expect(queryByRole("listbox")).toBeNull();
 
-  fireEvent.change(box, { target: { value: "/goal @co", selectionStart: 9 } });
+  typeAndPause(box, "/goal @co");
   expect(getByRole("listbox")).toBeTruthy();
   fireEvent.keyDown(box, { key: "Escape" });
   expect(queryByRole("listbox")).toBeNull();
+});
+
+it("submits the typed text on Enter when the shown menu is from before the last keystrokes", () => {
+  vi.useFakeTimers();
+  const onSubmit = vi.fn();
+  const { getByRole } = render(<Composer onSubmit={onSubmit} triggers={TRIGGERS} />);
+  const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+
+  typeAndPause(box, "@");
+  expect(getByRole("listbox")).toBeTruthy();
+  fireEvent.change(box, { target: { value: "@ hi", selectionStart: 4 } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(onSubmit).toHaveBeenCalledWith("@ hi");
 });
